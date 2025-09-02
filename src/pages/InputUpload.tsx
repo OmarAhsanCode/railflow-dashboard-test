@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useNavigate } from "react-router-dom";
 import { 
   FileText, 
@@ -12,18 +13,40 @@ import {
   Upload, 
   ArrowLeft,
   CheckCircle,
+  AlertCircle,
+  Copy,
+  ExternalLink,
   FileUp
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/LanguageContext";
 
+interface WebhookResponse {
+  success: boolean;
+  message: string;
+  data?: Record<string, unknown>;
+  timestamp?: string;
+  error?: string;
+}
+
+interface FormData {
+  name: string;
+  email: string;
+  message: string;
+  category: string;
+  files: File[];
+}
+
 interface UploadedFile {
   id: string;
   name: string;
-  type: 'logbook' | 'whatsapp' | 'spreadsheet' | 'iot';
+  type: string;
   size: string;
   status: 'uploaded' | 'processing' | 'completed';
+  file: File;
 }
+
+const WEBHOOK_URL = "https://submastery.app.n8n.cloud/webhook-test/InputScreen";
 
 const fileTypes = [
   {
@@ -68,169 +91,150 @@ export default function InputUpload() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useLanguage();
+  
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    email: '',
+    message: '',
+    category: 'logbook',
+    files: []
+  });
+  
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [webhookResponse, setWebhookResponse] = useState<WebhookResponse | null>(null);
+  const [showResponse, setShowResponse] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [processing, setProcessing] = useState(false);
-  const [reportGenerated, setReportGenerated] = useState(false);
-  const [reportData, setReportData] = useState<any>(null);
+
+  const handleInputChange = (field: keyof FormData, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
 
   const handleFileUpload = (type: string, file: File) => {
     const newFile: UploadedFile = {
       id: Math.random().toString(36).substring(7),
       name: file.name,
-      type: type as any,
+      type: type,
       size: (file.size / 1024).toFixed(1) + ' KB',
-      status: 'uploaded'
+      status: 'uploaded',
+      file: file
     };
 
     setUploadedFiles(prev => [...prev, newFile]);
+    setFormData(prev => ({
+      ...prev,
+      files: [...prev.files, file]
+    }));
+    
     toast({
-      title: t('fileUploaded'),
-      description: `${file.name} ${t('uploadedSuccessfully')}`,
+      title: "File Uploaded",
+      description: `${file.name} uploaded successfully`,
     });
   };
 
-  const handleSendInput = async () => {
-    if (uploadedFiles.length === 0) {
+  const removeFile = (id: string) => {
+    const fileToRemove = uploadedFiles.find(f => f.id === id);
+    if (fileToRemove) {
+      setUploadedFiles(prev => prev.filter(file => file.id !== id));
+      setFormData(prev => ({
+        ...prev,
+        files: prev.files.filter(file => file !== fileToRemove.file)
+      }));
+    }
+  };
+
+  const submitToWebhook = async () => {
+    if (!formData.name || !formData.email) {
       toast({
-        title: t('noFilesSelected'),
-        description: t('pleaseUploadFiles'),
+        title: "Missing Information",
+        description: "Please fill in name and email fields",
         variant: "destructive"
       });
       return;
     }
 
-    setProcessing(true);
-    
-    // Simulate processing
-    for (let i = 0; i < uploadedFiles.length; i++) {
-      setTimeout(() => {
-        setUploadedFiles(prev => prev.map(file => 
-          prev.indexOf(file) === i ? { ...file, status: 'processing' } : file
-        ));
-      }, i * 500);
-      
-      setTimeout(() => {
-        setUploadedFiles(prev => prev.map(file => 
-          prev.indexOf(file) === i ? { ...file, status: 'completed' } : file
-        ));
-      }, (i + 1) * 1000);
-    }
+    setIsSubmitting(true);
+    setShowResponse(false);
 
-    setTimeout(() => {
-      setProcessing(false);
-      setReportGenerated(true);
+    try {
+      const submitData = new FormData();
+      submitData.append('name', formData.name);
+      submitData.append('email', formData.email);
+      submitData.append('message', formData.message);
+      submitData.append('category', formData.category);
       
-      // Generate sample report data
-      const sampleReport = {
-        title: "Railway Operations Daily Report",
-        generatedAt: new Date().toLocaleString(),
-        processedFiles: uploadedFiles.length,
-        summary: {
-          maintenanceAlerts: 12,
-          urgentActions: 3,
-          fleetHealthScore: "89%",
-          optimizations: 24
-        },
-        sections: [
-          {
-            title: "Maintenance Logs Analysis",
-            items: [
-              "Train TR-4521: Brake system inspection due",
-              "Train TR-3892: Engine oil change completed", 
-              "Train TR-5671: Air conditioning repair scheduled"
-            ]
-          },
-          {
-            title: "Communication Records",
-            items: [
-              "WhatsApp alerts processed: 15 messages",
-              "Maintenance team coordination: 8 updates",
-              "Operations briefing: 3 priority items"
-            ]
-          },
-          {
-            title: "Operational Metrics",
-            items: [
-              "Fleet availability: 82% (147/180 trains)",
-              "On-time performance: 94.2%",
-              "Average delay: 2.3 minutes"
-            ]
-          },
-          {
-            title: "IoT Sensor Analytics", 
-            items: [
-              "Temperature anomalies detected: 2 instances",
-              "Vibration patterns within normal range",
-              "Energy consumption optimization: 12% improvement"
-            ]
-          }
-        ]
-      };
+      formData.files.forEach((file, index) => {
+        submitData.append(`file_${index}`, file);
+      });
+
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        body: submitData,
+      });
+
+      const responseData = await response.json();
       
-      setReportData(sampleReport);
+      setWebhookResponse({
+        success: true,
+        message: 'Success',
+        data: responseData,
+        timestamp: new Date().toISOString()
+      });
+
+      setShowResponse(true);
       
       toast({
-        title: t('processingComplete'),
-        description: t('consolidatedPdfGenerated'),
+        title: "Submission Successful!",
+        description: "Data sent to n8n webhook successfully",
       });
-    }, uploadedFiles.length * 1000 + 1000);
+
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to submit to webhook';
+      console.error('Webhook submission error:', error);
+      
+      setWebhookResponse({
+        success: false,
+        message: 'Error',
+        error: errorMessage,
+        timestamp: new Date().toISOString()
+      });
+
+      setShowResponse(true);
+
+      toast({
+        title: "Submission Failed",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const removeFile = (id: string) => {
-    setUploadedFiles(prev => prev.filter(file => file.id !== id));
-  };
-
-  const downloadReport = () => {
-    if (!reportData) return;
-    
-    // Create a comprehensive text report
-    const reportContent = `
-${reportData.title}
-Generated: ${reportData.generatedAt}
-===============================================
-
-EXECUTIVE SUMMARY
-- Files Processed: ${reportData.processedFiles}
-- Maintenance Alerts: ${reportData.summary.maintenanceAlerts}
-- Urgent Actions Required: ${reportData.summary.urgentActions}
-- Fleet Health Score: ${reportData.summary.fleetHealthScore}
-- Optimization Suggestions: ${reportData.summary.optimizations}
-
-===============================================
-
-${reportData.sections.map((section: any) => `
-${section.title.toUpperCase()}
-${'-'.repeat(section.title.length)}
-${section.items.map((item: string) => `• ${item}`).join('\n')}
-`).join('\n')}
-
-===============================================
-Report generated by Railway Operations Management System
-© 2024 Railway Operations Department
-    `.trim();
-
-    // Create and download the file
-    const blob = new Blob([reportContent], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Railway_Operations_Report_${new Date().toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    
-    toast({
-      title: "Report Downloaded",
-      description: "Ultimate day report has been saved to your downloads",
-    });
+  const copyResponseToClipboard = () => {
+    if (webhookResponse) {
+      navigator.clipboard.writeText(JSON.stringify(webhookResponse, null, 2));
+      toast({
+        title: "Copied!",
+        description: "Response data copied to clipboard",
+      });
+    }
   };
 
   const resetForm = () => {
+    setFormData({
+      name: '',
+      email: '',
+      message: '',
+      category: 'logbook',
+      files: []
+    });
     setUploadedFiles([]);
-    setProcessing(false);
-    setReportGenerated(false);
-    setReportData(null);
+    setWebhookResponse(null);
+    setShowResponse(false);
   };
 
   return (
@@ -338,153 +342,127 @@ Report generated by Railway Operations Management System
         </Card>
       )}
 
-      {/* Send Input Button */}
-      <div className="flex justify-center">
-        <Button 
-          onClick={handleSendInput}
-          disabled={processing || uploadedFiles.length === 0}
-          className="bg-gradient-primary hover:opacity-90 text-primary-foreground px-8 py-3 text-lg"
-        >
-          {processing ? (
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              {t('processing')}...
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              {t('sendInput')}
-            </div>
-          )}
-        </Button>
-      </div>
-
-      {/* Processing Preview */}
-      {processing && (
+      {/* Form Section for additional data */}
+      {uploadedFiles.length > 0 && (
         <Card className="shadow-railway-md">
           <CardHeader>
-            <CardTitle>{t('generatingOutput')}</CardTitle>
-            <CardDescription>
-              {t('consolidatingData')}
-            </CardDescription>
+            <CardTitle>Additional Information</CardTitle>
+            <CardDescription>Provide context for your uploaded files</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="bg-gradient-subtle p-4 rounded-md">
-                <h4 className="font-semibold mb-2">{t('sampleOutput')}</h4>
-                <p className="text-sm text-muted-foreground mb-3">
-                  {t('consolidatedReport')} - Railway_Operations_Report_2024.txt
-                </p>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-medium">{t('processedSections')}:</span>
-                    <ul className="mt-1 space-y-1 text-muted-foreground">
-                      <li>• {t('maintenanceLogs')}</li>
-                      <li>• {t('communicationRecords')}</li>
-                      <li>• {t('operationalData')}</li>
-                      <li>• {t('sensorAnalytics')}</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <span className="font-medium">{t('insights')}:</span>
-                    <ul className="mt-1 space-y-1 text-muted-foreground">
-                      <li>• 12 {t('maintenanceAlertsIdentified')}</li>
-                      <li>• 3 {t('urgentActionsRequired')}</li>
-                      <li>• 89% {t('fleetHealthScore')}</li>
-                      <li>• 24 {t('optimizationSuggestions')}</li>
-                    </ul>
-                  </div>
-                </div>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  placeholder="Enter your name"
+                />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  placeholder="Enter your email"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="message">Message</Label>
+              <Textarea
+                id="message"
+                value={formData.message}
+                onChange={(e) => handleInputChange('message', e.target.value)}
+                placeholder="Add any additional context or notes..."
+                rows={4}
+              />
+            </div>
+
+            <div className="flex justify-center">
+              <Button 
+                onClick={submitToWebhook}
+                disabled={isSubmitting || uploadedFiles.length === 0}
+                className="bg-gradient-primary hover:opacity-90 text-primary-foreground px-8 py-3 text-lg"
+              >
+                {isSubmitting ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Sending...
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Upload className="h-5 w-5" />
+                    Send to Webhook
+                  </div>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Generated Report Display */}
-      {reportGenerated && reportData && (
-        <Card className="shadow-railway-lg border-signal-green/20">
-          <CardHeader className="bg-gradient-primary text-primary-foreground">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <CheckCircle className="h-6 w-6" />
-                  Ultimate Day Report Generated
-                </CardTitle>
-                <CardDescription className="text-primary-foreground/80">
-                  Comprehensive analysis of all uploaded data
-                </CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={downloadReport}
-                  variant="secondary"
-                  className="bg-white/10 hover:bg-white/20 text-white border-white/20"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Download Report
-                </Button>
-                <Button 
-                  onClick={resetForm}
-                  variant="secondary" 
-                  className="bg-white/10 hover:bg-white/20 text-white border-white/20"
-                >
-                  Start New Analysis
-                </Button>
-              </div>
-            </div>
+      {/* Webhook Response Display */}
+      {showResponse && webhookResponse && (
+        <Card className="shadow-railway-md border-signal-green/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              {webhookResponse.success ? (
+                <CheckCircle className="h-5 w-5 text-signal-green" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-signal-orange" />
+              )}
+              Webhook Response
+            </CardTitle>
+            <CardDescription>
+              Response from n8n webhook - {webhookResponse?.timestamp && new Date(webhookResponse.timestamp).toLocaleString()}
+            </CardDescription>
           </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Executive Summary */}
-              <div className="lg:col-span-1">
-                <h3 className="font-semibold text-lg mb-4 text-foreground">Executive Summary</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-signal-green/10 rounded-md">
-                    <span className="text-sm font-medium">Files Processed</span>
-                    <span className="font-bold text-signal-green">{reportData.processedFiles}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-signal-amber/10 rounded-md">
-                    <span className="text-sm font-medium">Maintenance Alerts</span>
-                    <span className="font-bold text-signal-amber">{reportData.summary.maintenanceAlerts}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-signal-orange/10 rounded-md">
-                    <span className="text-sm font-medium">Urgent Actions</span>
-                    <span className="font-bold text-signal-orange">{reportData.summary.urgentActions}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-railway-blue/10 rounded-md">
-                    <span className="text-sm font-medium">Fleet Health</span>
-                    <span className="font-bold text-railway-blue">{reportData.summary.fleetHealthScore}</span>
-                  </div>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Status:</span>
+                <span className={`px-2 py-1 rounded text-sm ${
+                  webhookResponse.success 
+                    ? 'bg-signal-green/10 text-signal-green' 
+                    : 'bg-signal-orange/10 text-signal-orange'
+                }`}>
+                  {webhookResponse.success ? 'Success' : 'Error'}
+                </span>
+              </div>
+              
+              <div className="bg-muted/30 p-4 rounded-md">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-sm">Raw Response:</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={copyResponseToClipboard}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
                 </div>
+                <pre className="text-xs overflow-auto max-h-40 bg-background p-2 rounded border">
+                  {JSON.stringify(webhookResponse, null, 2)}
+                </pre>
               </div>
 
-              {/* Detailed Sections */}
-              <div className="lg:col-span-2">
-                <h3 className="font-semibold text-lg mb-4 text-foreground">Detailed Analysis</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {reportData.sections.map((section: any, index: number) => (
-                    <div key={index} className="bg-muted/30 p-4 rounded-md">
-                      <h4 className="font-semibold mb-3 text-foreground">{section.title}</h4>
-                      <ul className="space-y-2">
-                        {section.items.map((item: string, itemIndex: number) => (
-                          <li key={itemIndex} className="text-sm text-muted-foreground flex items-start gap-2">
-                            <CheckCircle className="h-3 w-3 text-signal-green mt-0.5 flex-shrink-0" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Report Metadata */}
-            <div className="mt-6 pt-6 border-t border-border">
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>Generated: {reportData.generatedAt}</span>
-                <span>Railway Operations Management System © 2024</span>
+              <div className="flex gap-2">
+                <Button onClick={resetForm} variant="outline">
+                  Reset Form
+                </Button>
+                <Button 
+                  onClick={() => setShowResponse(false)} 
+                  variant="ghost"
+                >
+                  Close Response
+                </Button>
               </div>
             </div>
           </CardContent>

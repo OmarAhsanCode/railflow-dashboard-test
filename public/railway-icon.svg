@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background -->
+  <rect width="32" height="32" fill="#1e40af" rx="4"/>
+  
+  <!-- Train body -->
+  <rect x="6" y="12" width="20" height="8" fill="#ffffff" rx="2"/>
+  
+  <!-- Train front -->
+  <rect x="6" y="12" width="4" height="8" fill="#f1f5f9" rx="2"/>
+  
+  <!-- Windows -->
+  <rect x="10" y="14" width="3" height="2" fill="#1e40af" rx="0.5"/>
+  <rect x="15" y="14" width="3" height="2" fill="#1e40af" rx="0.5"/>
+  <rect x="20" y="14" width="3" height="2" fill="#1e40af" rx="0.5"/>
+  
+  <!-- Wheels -->
+  <circle cx="9" cy="22" r="2" fill="#374151"/>
+  <circle cx="23" cy="22" r="2" fill="#374151"/>
+  <circle cx="9" cy="22" r="1" fill="#6b7280"/>
+  <circle cx="23" cy="22" r="1" fill="#6b7280"/>
+  
+  <!-- Rail tracks -->
+  <rect x="4" y="26" width="24" height="1" fill="#6b7280"/>
+  <rect x="4" y="28" width="24" height="1" fill="#6b7280"/>
+</svg>

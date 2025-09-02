@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -13,6 +14,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Check if user is already logged in (simple demo logic)
   useEffect(() => {
@@ -47,25 +49,25 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-subtle p-4">
-      <Card className="w-full max-w-md shadow-railway-lg">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="p-3 bg-gradient-primary rounded-full">
-              <Train className="h-8 w-8 text-white" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-subtle p-3 sm:p-4 lg:p-6">
+      <Card className="w-full max-w-sm sm:max-w-md shadow-railway-lg">
+        <CardHeader className="text-center pb-4 sm:pb-6">
+          <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
+            <div className="p-2 sm:p-3 bg-gradient-primary rounded-full">
+              <Train className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-foreground">
-            Railway Operations
+          <CardTitle className="text-xl sm:text-2xl font-bold text-foreground">
+            {isMobile ? "Railway Ops" : "Railway Operations"}
           </CardTitle>
-          <CardDescription>
-            Management System Access Portal
+          <CardDescription className="text-sm">
+            {isMobile ? "Access Portal" : "Management System Access Portal"}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4 sm:space-y-6">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username" className="text-sm">Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -73,10 +75,11 @@ export default function Login() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
+                className="h-10 sm:h-11"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-sm">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -84,11 +87,12 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                className="h-10 sm:h-11"
               />
             </div>
             <Button 
               type="submit" 
-              className="w-full bg-gradient-primary hover:bg-railway-blue-dark"
+              className="w-full bg-gradient-primary hover:bg-railway-blue-dark h-10 sm:h-11"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -101,7 +105,7 @@ export default function Login() {
               )}
             </Button>
           </form>
-          <div className="mt-4 text-xs text-center text-muted-foreground">
+          <div className="text-xs text-center text-muted-foreground px-2">
             Demo credentials: admin / railway123
           </div>
         </CardContent>
